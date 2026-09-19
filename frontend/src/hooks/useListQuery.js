@@ -5,9 +5,13 @@ const EMPTY_META = { total: 0, page: 1, page_size: 10, pages: 0 };
 /**
  * 列表页通用逻辑：维护过滤条件与分页，并在条件变化时自动请求。
  * fetcher 允许每次渲染传入新函数，内部用 ref 保持稳定，避免重复请求。
+ *
+ * initialFilters 为首次进入时的筛选（可由 URL 参数推导，看板下钻场景）；
+ * resetBase 为点击「重置」时恢复的基线（通常是页面自带的全空默认值）。
  */
-export function useListQuery(fetcher, defaultFilters = {}, pageSize = 10) {
-  const [filters, setFilters] = useState(defaultFilters);
+export function useListQuery(fetcher, initialFilters = {}, pageSize = 10, resetBase = null) {
+  const resetBaseRef = useRef(resetBase || initialFilters);
+  const [filters, setFilters] = useState(initialFilters);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -47,8 +51,7 @@ export function useListQuery(fetcher, defaultFilters = {}, pageSize = 10) {
 
   const resetFilters = useCallback(() => {
     setPage(1);
-    setFilters(defaultFilters);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setFilters(resetBaseRef.current);
   }, []);
 
   return {

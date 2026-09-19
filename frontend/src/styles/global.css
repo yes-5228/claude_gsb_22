@@ -691,6 +691,80 @@ table.data-table td.wrap {
   background: var(--warning);
 }
 
+/* 看板区间口径 */
+.range-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.range-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--primary-soft);
+  border: 1px solid #bfe3dd;
+  color: var(--primary-dark);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.range-banner .hint {
+  color: var(--text-muted);
+}
+
+.drill-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stat-card .value.is-empty {
+  color: var(--text-muted);
+  font-size: 22px;
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+/* 看板下钻：分布条 / 趋势柱可点击 */
+a.bar-row {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  padding: 2px 4px;
+  transition: background 0.15s;
+}
+
+a.bar-row:hover {
+  background: var(--surface-alt);
+}
+
+a.bar-row:hover .bar-value {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+a.trend-col {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+}
+
+a.trend-col:hover .trend-bar {
+  filter: brightness(1.15);
+}
+
+a.trend-col:hover .trend-label {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 /* 明细与时间线 */
 .detail-list {
   display: grid;

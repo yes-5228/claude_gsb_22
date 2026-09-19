@@ -95,5 +95,11 @@ OPEN_ISSUE_STATUSES: list[str] = [
     IssueStatus.REVIEWING,
 ]
 
+# 已完成闭环的状态（已完成尚未归档关闭，但业务上视为已闭环）
+CLOSED_ISSUE_STATUSES: list[str] = [
+    IssueStatus.DONE,
+    IssueStatus.CLOSED,
+]
+
 # 单检查项低于该分数视为不合格项
 INSPECTION_ITEM_PROBLEM_THRESHOLD = 6

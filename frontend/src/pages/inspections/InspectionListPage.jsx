@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { inspectionApi } from '../../api/inspections.js';
 import { restroomApi } from '../../api/restrooms.js';
+import DashboardDrillBanner from '../../components/DashboardDrillBanner.jsx';
 import DataTable from '../../components/DataTable.jsx';
 import Field from '../../components/Field.jsx';
 import PageHeader from '../../components/PageHeader.jsx';
@@ -25,6 +26,18 @@ const DEFAULT_FILTERS = {
   date_to: '',
 };
 
+// 看板下钻时允许从 URL 自动带入的筛选项（dashMode/dashDays 仅用于返回看板恢复口径）
+const URL_FILTER_KEYS = ['keyword', 'district', 'shift', 'result', 'date_from', 'date_to'];
+
+function filtersFromParams(searchParams) {
+  const filters = { ...DEFAULT_FILTERS };
+  URL_FILTER_KEYS.forEach((key) => {
+    const value = searchParams.get(key);
+    if (value) filters[key] = value;
+  });
+  return filters;
+}
+
 export default function InspectionListPage() {
   const { dictionaries } = useDictionaries();
   const toast = useToast();
@@ -32,7 +45,15 @@ export default function InspectionListPage() {
   const [showForm, setShowForm] = useState(false);
   const [active, setActive] = useState(null);
 
-  const list = useListQuery((params) => inspectionApi.list(params), DEFAULT_FILTERS, 10);
+  // 首次渲染时从 URL 读取看板下钻带来的区间 / 区域等条件
+  const [searchParams] = useSearchParams();
+  const initialFilters = useMemo(() => filtersFromParams(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const list = useListQuery(
+    (params) => inspectionApi.list(params),
+    initialFilters,
+    10,
+    DEFAULT_FILTERS,
+  );
   const { data: districts } = useAsync(() => restroomApi.districts(), []);
 
   const remove = async (row) => {
@@ -58,6 +79,8 @@ export default function InspectionListPage() {
         }
       />
       <div className="content">
+        <DashboardDrillBanner dateFrom={list.filters.date_from} dateTo={list.filters.date_to} />
+
         <section className="card">
           <div className="filter-bar">
             <Field label="关键字" full>
@@ -124,7 +147,7 @@ export default function InspectionListPage() {
             loading={list.loading}
             error={list.error}
             rows={list.items}
-            emptyText="暂无巡查记录"
+            emptyText="该筛选条件下暂无巡查记录"
             columns={[
               {
                 key: 'inspect_time',

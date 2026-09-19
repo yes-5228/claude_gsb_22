@@ -209,7 +209,12 @@ def test_issue_requires_matching_restroom(client, restroom):
 
 
 def test_dashboard_stats(client, restroom):
-    payload = client.get("/api/v1/stats/dashboard", params={"trend_days": 7}).json()
+    payload = client.get("/api/v1/stats/dashboard", params={"days": 7, "mode": "current"}).json()
+    range_meta = payload["range"]
+    assert range_meta["mode"] == "current"
+    assert range_meta["days"] == 7
+    assert range_meta["date_from"] <= range_meta["date_to"]
+
     overview = payload["overview"]
     assert overview["restroom_total"] >= 1
     assert overview["inspection_total"] >= 1
@@ -223,3 +228,194 @@ def test_dashboard_stats(client, restroom):
     }
     assert payload["top_restrooms"]
     assert "rectification_rate" in overview
+
+
+def _create_issue(client, restroom_id, *, category="保洁不到位", severity="一般", days_ago=0):
+    return client.post(
+        "/api/v1/issues",
+        json={
+            "restroom_id": restroom_id,
+            "title": f"{category}-{days_ago}天前",
+            "category": category,
+            "severity": severity,
+            "reporter": "测试巡查员",
+            "report_time": (datetime.now() - timedelta(days=days_ago)).isoformat(),
+        },
+    ).json()
+
+
+def test_dashboard_range_consistency_and_detail_reconciliation(client, restroom):
+    """指标卡 / 趋势 / 明细三处合计必须一致：看板区间与明细列表同口径过滤。"""
+    # 测试库为会话级共享，先记录基线，再用增量断言区间口径
+    before = client.get(
+        "/api/v1/stats/dashboard", params={"days": 7, "mode": "current"}
+    ).json()
+    base_insp = before["overview"]["inspection_total"]
+    base_issue = before["overview"]["issue_total"]
+
+    # 区间内新增 2 条巡查、区间外 1 条
+    for days_ago in (0, 2):
+        client.post(
+            "/api/v1/inspections",
+            json={
+                "restroom_id": restroom["id"],
+                "inspector": "区间巡查员",
+                "shift": "早班",
+                "items": full_items(9),
+                "inspect_time": (datetime.now() - timedelta(days=days_ago)).isoformat(),
+            },
+        )
+    client.post(
+        "/api/v1/inspections",
+        json={
+            "restroom_id": restroom["id"],
+            "inspector": "区间外巡查员",
+            "shift": "早班",
+            "items": full_items(9),
+            "inspect_time": (datetime.now() - timedelta(days=10)).isoformat(),
+        },
+    )
+    _create_issue(client, restroom["id"], days_ago=1)
+    _create_issue(client, restroom["id"], category="设施损坏", severity="严重", days_ago=3)
+    _create_issue(client, restroom["id"], days_ago=9)
+
+    payload = client.get(
+        "/api/v1/stats/dashboard", params={"days": 7, "mode": "current"}
+    ).json()
+    meta = payload["range"]
+
+    # 区间内恰好新增 2 条巡查、2 个问题，区间外的不计入
+    assert payload["overview"]["inspection_total"] == base_insp + 2
+    assert payload["overview"]["issue_total"] == base_issue + 2
+
+    # 趋势按天合计 == 指标卡合计
+    assert sum(p["inspections"] for p in payload["inspection_trend"]) == payload["overview"][
+        "inspection_total"
+    ]
+    assert sum(p["issues"] for p in payload["inspection_trend"]) == payload["overview"][
+        "issue_total"
+    ]
+    # 分布合计 == 指标卡合计
+    assert sum(i["value"] for i in payload["issue_by_status"]) == payload["overview"][
+        "issue_total"
+    ]
+    assert sum(i["value"] for i in payload["issue_by_severity"]) == payload["overview"][
+        "issue_total"
+    ]
+    assert sum(i["total"] for i in payload["issue_by_category"]) == payload["overview"][
+        "issue_total"
+    ]
+
+    # 明细列表用看板返回的 date_from/date_to 过滤，合计必须与看板完全一致
+    issues = client.get(
+        "/api/v1/issues",
+        params={"date_from": meta["date_from"], "date_to": meta["date_to"]},
+    ).json()
+    assert issues["meta"]["total"] == payload["overview"]["issue_total"]
+    inspections = client.get(
+        "/api/v1/inspections",
+        params={"date_from": meta["date_from"], "date_to": meta["date_to"]},
+    ).json()
+    assert inspections["meta"]["total"] == payload["overview"]["inspection_total"]
+
+    # 区间外的记录确实只出现在更宽的明细查询里
+    wide = client.get(
+        "/api/v1/inspections",
+        params={
+            "date_from": (datetime.now().date() - timedelta(days=12)).isoformat(),
+            "date_to": meta["date_to"],
+        },
+    ).json()
+    assert wide["meta"]["total"] >= inspections["meta"]["total"] + 1
+
+    # 分类下钻：看板分类数 == 带分类+区间条件的明细数
+    cleaning = next(i for i in payload["issue_by_category"] if i["category"] == "保洁不到位")
+    drilling = client.get(
+        "/api/v1/issues",
+        params={
+            "date_from": meta["date_from"],
+            "date_to": meta["date_to"],
+            "category": "保洁不到位",
+        },
+    ).json()
+    assert drilling["meta"]["total"] == cleaning["total"]
+
+    # 区域下钻：看板区域问题数 == 带区域+区间条件的明细数
+    district_row = next(row for row in payload["districts"] if row["district"] == "测试区")
+    by_district = client.get(
+        "/api/v1/issues",
+        params={
+            "date_from": meta["date_from"],
+            "date_to": meta["date_to"],
+            "district": "测试区",
+        },
+    ).json()
+    assert by_district["meta"]["total"] == district_row["issue_count"]
+
+
+def test_dashboard_compare_periods_are_disjoint_and_equal_length(client, restroom):
+    """环比为紧邻的上一等长区间，同比为去年同期，二者与本期互不重叠。"""
+    current = client.get(
+        "/api/v1/stats/dashboard", params={"days": 7, "mode": "current"}
+    ).json()["range"]
+    mom = client.get("/api/v1/stats/dashboard", params={"days": 7, "mode": "mom"}).json()[
+        "range"
+    ]
+    yoy = client.get(
+        "/api/v1/stats/dashboard", params={"days": 7, "mode": "yoy"}
+    ).json()["range"]
+
+    assert mom["days"] == yoy["days"] == current["days"] == 7
+    # 环比区间紧接本期之前、等长且不重叠
+    from datetime import date as date_cls
+
+    cur_from = date_cls.fromisoformat(current["date_from"])
+    mom_to = date_cls.fromisoformat(mom["date_to"])
+    mom_from = date_cls.fromisoformat(mom["date_from"])
+    assert (cur_from - mom_to).days == 1
+    assert (mom_to - mom_from).days == 6
+    # 同比恰好在一年前
+    yoy_from = date_cls.fromisoformat(yoy["date_from"])
+    assert (cur_from - yoy_from).days in (365, 366)
+    assert yoy["date_from"] < mom["date_from"]
+
+
+def test_dashboard_empty_period_is_marked_not_zero(client, restroom):
+    """去年同期没有任何业务数据时，要明确返回无数据标记，均分/闭环率为 null 而非 0。"""
+    payload = client.get(
+        "/api/v1/stats/dashboard", params={"days": 30, "mode": "yoy"}
+    ).json()
+    assert payload["has_inspections"] is False
+    assert payload["has_issues"] is False
+    overview = payload["overview"]
+    assert overview["inspection_total"] == 0
+    assert overview["issue_total"] == 0
+    assert overview["avg_score"] is None
+    assert overview["rectification_rate"] is None
+    # 趋势仍给出完整日期骨架，但每日均分也是 null
+    assert len(payload["inspection_trend"]) == 30
+    assert all(point["avg_score"] is None for point in payload["inspection_trend"])
+
+    # 有巡查无问题：巡查均分有值，问题闭环率仍须为 null
+    # 把巡查写到去年同期窗口，该窗口在整个测试会话中没有问题数据
+    client.post(
+        "/api/v1/inspections",
+        json={
+            "restroom_id": restroom["id"],
+            "inspector": "去年巡查员",
+            "items": full_items(8),
+            "inspect_time": (datetime.now() - timedelta(days=365)).isoformat(),
+        },
+    )
+    yoy_again = client.get(
+        "/api/v1/stats/dashboard", params={"days": 7, "mode": "yoy"}
+    ).json()
+    assert yoy_again["has_inspections"] is True
+    assert yoy_again["has_issues"] is False
+    assert yoy_again["overview"]["avg_score"] == 80.0
+    assert yoy_again["overview"]["rectification_rate"] is None
+
+
+def test_dashboard_invalid_mode_rejected(client):
+    bad = client.get("/api/v1/stats/dashboard", params={"mode": "half_year"})
+    assert bad.status_code == 422

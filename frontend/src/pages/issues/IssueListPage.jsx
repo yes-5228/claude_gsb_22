@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { issueApi } from '../../api/issues.js';
 import { restroomApi } from '../../api/restrooms.js';
+import DashboardDrillBanner from '../../components/DashboardDrillBanner.jsx';
 import DataTable from '../../components/DataTable.jsx';
 import Field from '../../components/Field.jsx';
 import PageHeader from '../../components/PageHeader.jsx';
@@ -23,7 +24,31 @@ const DEFAULT_FILTERS = {
   severity: '',
   overdue: '',
   open_only: '',
+  date_from: '',
+  date_to: '',
 };
+
+// 看板下钻时允许从 URL 自动带入的筛选项（dashMode/dashDays 仅用于返回看板恢复口径）
+const URL_FILTER_KEYS = [
+  'keyword',
+  'district',
+  'status',
+  'category',
+  'severity',
+  'overdue',
+  'open_only',
+  'date_from',
+  'date_to',
+];
+
+function filtersFromParams(searchParams) {
+  const filters = { ...DEFAULT_FILTERS };
+  URL_FILTER_KEYS.forEach((key) => {
+    const value = searchParams.get(key);
+    if (value) filters[key] = value;
+  });
+  return filters;
+}
 
 export default function IssueListPage() {
   const { dictionaries } = useDictionaries();
@@ -32,7 +57,9 @@ export default function IssueListPage() {
   const [showForm, setShowForm] = useState(false);
   const [preset, setPreset] = useState({});
 
-  const list = useListQuery((params) => issueApi.list(params), DEFAULT_FILTERS, 10);
+  // 首次渲染时从 URL 读取看板下钻带来的筛选条件，保证进入明细即自动过滤
+  const initialFilters = useMemo(() => filtersFromParams(searchParams), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const list = useListQuery((params) => issueApi.list(params), initialFilters, 10, DEFAULT_FILTERS);
   const { data: districts } = useAsync(() => restroomApi.districts(), []);
 
   // 支持从巡查记录跳转过来直接上报问题
@@ -77,6 +104,8 @@ export default function IssueListPage() {
         }
       />
       <div className="content">
+        <DashboardDrillBanner dateFrom={list.filters.date_from} dateTo={list.filters.date_to} />
+
         <section className="card">
           <div className="filter-bar">
             <Field label="关键字" full>
@@ -130,6 +159,20 @@ export default function IssueListPage() {
                 ))}
               </select>
             </Field>
+            <Field label="上报开始日期">
+              <input
+                type="date"
+                value={list.filters.date_from}
+                onChange={(event) => list.updateFilter('date_from', event.target.value)}
+              />
+            </Field>
+            <Field label="上报结束日期">
+              <input
+                type="date"
+                value={list.filters.date_to}
+                onChange={(event) => list.updateFilter('date_to', event.target.value)}
+              />
+            </Field>
             <Field label="超期情况">
               <select
                 value={list.filters.overdue}
@@ -159,7 +202,7 @@ export default function IssueListPage() {
             loading={list.loading}
             error={list.error}
             rows={list.items}
-            emptyText="暂无问题记录"
+            emptyText="该筛选条件下暂无问题记录"
             columns={[
               { key: 'code', title: '编号' },
               {
