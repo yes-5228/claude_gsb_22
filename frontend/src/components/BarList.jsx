@@ -1,6 +1,8 @@
 export default function BarList({ items, tone = 'primary', emptyText = '暂无数据' }) {
+  const hasValue = (items || []).some((item) => Number(item.value) > 0);
+  if (!items?.length || !hasValue) return <div className="empty-block">{emptyText}</div>;
+
   const max = Math.max(...items.map((item) => item.value), 1);
-  if (!items.length) return <div className="empty-block">{emptyText}</div>;
 
   return (
     <div className="bar-list">

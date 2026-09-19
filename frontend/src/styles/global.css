@@ -850,3 +850,128 @@ table.data-table td.wrap {
     white-space: nowrap;
   }
 }
+
+/* ===== 看板：区间口径 / 环比同比 / 明细联动 ===== */
+.dashboard-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  border: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  padding: 8px 16px;
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--border);
+}
+
+.segmented button:hover {
+  color: var(--primary);
+}
+
+.segmented button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.period-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--primary-soft);
+  border: 1px solid #bfe3de;
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--primary-dark);
+}
+
+.period-bar .period-main strong {
+  font-size: 14px;
+}
+
+.period-bar .period-compare {
+  color: var(--text-muted);
+}
+
+.refresh-mask-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.refresh-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.62);
+  border-radius: var(--radius);
+  color: var(--primary-dark);
+  font-size: 13.5px;
+  pointer-events: none;
+}
+
+.stat-card .foot.foot-up {
+  color: var(--success);
+}
+
+.stat-card .foot.foot-down {
+  color: var(--danger);
+}
+
+.stat-card .foot.foot-muted {
+  color: var(--text-muted);
+}
+
+.card-foot-total {
+  margin-top: 10px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+a.text-danger {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.back-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--primary-soft);
+  border: 1px solid #bfe3de;
+  border-radius: var(--radius);
+  padding: 8px 14px;
+}
+
+.back-bar .btn-link {
+  padding: 0;
+  font-weight: 600;
+}
+
+.back-bar .hint {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}

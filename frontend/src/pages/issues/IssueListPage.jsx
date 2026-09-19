@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { issueApi } from '../../api/issues.js';
 import { restroomApi } from '../../api/restrooms.js';
@@ -23,16 +23,34 @@ const DEFAULT_FILTERS = {
   severity: '',
   overdue: '',
   open_only: '',
+  date_from: '',
+  date_to: '',
 };
+
+/** 从看板跳转带入的筛选：仅首次进入时作为初始值，之后由用户在页面上自由调整。 */
+function readInitialFilters(searchParams) {
+  const initial = { ...DEFAULT_FILTERS };
+  ['district', 'status', 'category', 'severity', 'date_from', 'date_to'].forEach((key) => {
+    const value = searchParams.get(key);
+    if (value) initial[key] = value;
+  });
+  return initial;
+}
 
 export default function IssueListPage() {
   const { dictionaries } = useDictionaries();
   const toast = useToast();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [preset, setPreset] = useState({});
+  const fromDashboard = searchParams.get('back') === '1';
 
-  const list = useListQuery((params) => issueApi.list(params), DEFAULT_FILTERS, 10);
+  const initialFilters = useMemo(
+    () => readInitialFilters(searchParams),
+    [], // 仅在挂载时读取一次 URL 作为初始筛选
+  );
+  const list = useListQuery((params) => issueApi.list(params), initialFilters, 10);
   const { data: districts } = useAsync(() => restroomApi.districts(), []);
 
   // 支持从巡查记录跳转过来直接上报问题
@@ -77,6 +95,18 @@ export default function IssueListPage() {
         }
       />
       <div className="content">
+        {fromDashboard ? (
+          <div className="back-bar">
+            <button type="button" className="btn-link" onClick={() => navigate(-1)}>
+              ← 返回总览看板（原统计区间保留）
+            </button>
+            {(list.filters.date_from || list.filters.date_to) ? (
+              <span className="hint">
+                已按看板区间筛选：{list.filters.date_from || '…'} ~ {list.filters.date_to || '…'}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <section className="card">
           <div className="filter-bar">
             <Field label="关键字" full>
@@ -147,6 +177,20 @@ export default function IssueListPage() {
                 <option value="">全部</option>
                 <option value="true">仅看未闭环</option>
               </select>
+            </Field>
+            <Field label="上报开始日期">
+              <input
+                type="date"
+                value={list.filters.date_from}
+                onChange={(event) => list.updateFilter('date_from', event.target.value)}
+              />
+            </Field>
+            <Field label="上报结束日期">
+              <input
+                type="date"
+                value={list.filters.date_to}
+                onChange={(event) => list.updateFilter('date_to', event.target.value)}
+              />
             </Field>
             <button type="button" className="btn" onClick={list.resetFilters}>
               重置

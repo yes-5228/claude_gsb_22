@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { inspectionApi } from '../../api/inspections.js';
 import { restroomApi } from '../../api/restrooms.js';
@@ -25,14 +25,30 @@ const DEFAULT_FILTERS = {
   date_to: '',
 };
 
+/** 从看板跳转带入的筛选：仅首次进入时作为初始值，之后由用户在页面上自由调整。 */
+function readInitialFilters(searchParams) {
+  const initial = { ...DEFAULT_FILTERS };
+  ['district', 'shift', 'result', 'date_from', 'date_to'].forEach((key) => {
+    const value = searchParams.get(key);
+    if (value) initial[key] = value;
+  });
+  return initial;
+}
+
 export default function InspectionListPage() {
   const { dictionaries } = useDictionaries();
   const toast = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [showForm, setShowForm] = useState(false);
   const [active, setActive] = useState(null);
+  const fromDashboard = searchParams.get('back') === '1';
 
-  const list = useListQuery((params) => inspectionApi.list(params), DEFAULT_FILTERS, 10);
+  const initialFilters = useMemo(
+    () => readInitialFilters(searchParams),
+    [], // 仅在挂载时读取一次 URL 作为初始筛选
+  );
+  const list = useListQuery((params) => inspectionApi.list(params), initialFilters, 10);
   const { data: districts } = useAsync(() => restroomApi.districts(), []);
 
   const remove = async (row) => {
@@ -58,6 +74,18 @@ export default function InspectionListPage() {
         }
       />
       <div className="content">
+        {fromDashboard ? (
+          <div className="back-bar">
+            <button type="button" className="btn-link" onClick={() => navigate(-1)}>
+              ← 返回总览看板（原统计区间保留）
+            </button>
+            {(list.filters.date_from || list.filters.date_to) ? (
+              <span className="hint">
+                已按看板区间筛选：{list.filters.date_from || '…'} ~ {list.filters.date_to || '…'}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <section className="card">
           <div className="filter-bar">
             <Field label="关键字" full>
